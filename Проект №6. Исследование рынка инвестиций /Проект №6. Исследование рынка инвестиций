@@ -1,1 +1,343 @@
+-- Исследование рынка инвестиций
+-- Цель исследования: проанализировать данные о венчурных фондах и инвестициях.
+-- Исходные данные: база данных на основе датасета Startup Investments, опубликованном на платформе Kaggle (https://www.kaggle.com/justinas/startup-investments)
 
+-- Задача №1: посчитать количество закрывшихся компаний
+
+SELECT COUNT(status)
+FROM company
+WHERE status = 'closed';
+
+-- Задача №2: отобразить количество привлеченных средств для новостных компаний США. 
+-- Использовать данные из таблицы company. Отсортировать таблицу по убыванию значений в поле funding_total.
+
+SELECT funding_total
+FROM company
+WHERE category_code = 'news'
+AND country_code = 'USA'
+ORDER BY funding_total DESC;
+
+-- Задача №3: найти общую сумму сделок по покупке одних компаний другими в долларах. 
+-- Отобрать сделки, которые осуществлялись только за наличные с 2011 по 2013 год включительно.
+
+SELECT SUM(price_amount)
+FROM acquisition
+WHERE term_code = 'cash'
+  AND EXTRACT(YEAR FROM CAST(acquired_at AS DATE)) BETWEEN 2011 AND 2013;
+
+-- Задача №4: отобразить имя, фамилию и названия аккаунтов людей в твиттере, у которых названия аккаунтов начинаются на 'Silver'.
+
+SELECT first_name,
+       last_name,
+       twitter_username
+FROM people
+WHERE twitter_username LIKE 'Silver%';
+
+-- Задача №5: вывести на экран всю информацию о людях, у которых названия аккаунтов в твиттере содержат подстроку 'money', а фамилия начинается на 'K'.
+
+SELECT *
+FROM people
+WHERE twitter_username LIKE '%money%'
+  AND last_name LIKE 'K%';
+
+-- Задача №6: для каждой страны отобразить общую сумму привлеченных инвестиций, которые получили компании, зарегистрированные в этой стране. 
+-- Отсортировать данные по убыванию суммы.
+
+SELECT country_code,
+       SUM(funding_total)
+FROM company
+GROUP BY country_code
+ORDER BY SUM(funding_total) DESC;
+
+-- Задача №7: составить таблицу, в которую войдет дата проведения раунда, минимальное и максимальное значения суммы инвестиций, привлеченных в эту дату.
+-- Оставить в итоговой таблице только те записи, в которых минимальное значение суммы инвестиций не равно нулю и не равно максимальному значению.
+
+SELECT funded_at,
+       MIN(raised_amount),
+       MAX(raised_amount)
+FROM funding_round
+GROUP BY funded_at
+HAVING MIN(raised_amount) <> 0 
+  AND MIN(raised_amount) <> MAX(raised_amount);
+
+-- Задача №8: создать поле с категориями:
+  -- Для фондов, которые инвестируют в 100 и более компаний, назначить категорию high_activity.
+  -- Для фондов, которые инвестируют в 20 и более компаний до 100, назначить категорию middle_activity.
+  -- Если количество инвестируемых компаний фонда не достигает 20, назначить категорию low_activity.
+-- Отобразить все поля таблицы fund и новое поле с категориями.
+
+SELECT *,
+       CASE
+          WHEN invested_companies >= 100 THEN 'high_activity'
+          WHEN invested_companies >= 20 AND invested_companies < 100 THEN 'middle_activity'
+          WHEN invested_companies < 20 THEN 'low_activity'
+       END
+FROM fund;
+
+-- Задача №9: для каждой из категорий посчитать округленное до ближайшего целого числа среднее количество инвестиционных раундов, в которых фонд принимал участие. 
+-- Вывести на экран категории и среднее число инвестиционных раундов. Отсортировать таблицу по возрастанию среднего.
+
+SELECT CASE
+           WHEN invested_companies>=100 THEN 'high_activity'
+           WHEN invested_companies>=20 THEN 'middle_activity'
+           ELSE 'low_activity'
+       END AS activity,
+       ROUND(AVG(investment_rounds))
+FROM fund
+GROUP BY activity
+ORDER BY ROUND(AVG(investment_rounds));
+
+-- Задача №10: посчитать минимальное, максимальное и среднее число компаний, в которые инвестировали фонды этой страны, основанные с 2010 по 2012 год включительно. 
+-- Исключить страны с фондами, у которых минимальное число компаний, получивших инвестиции, равно нулю. 
+-- Выгрузить десять самых активных стран-инвесторов. Добавить сортировку по коду страны в лексикографическом порядке.
+
+SELECT country_code,
+       MIN(invested_companies),
+       MAX(invested_companies),
+       AVG(invested_companies)
+FROM fund
+WHERE EXTRACT(YEAR FROM founded_at) BETWEEN '2010' AND '2012'
+GROUP BY country_code
+HAVING MIN(invested_companies) > 0
+ORDER BY AVG(invested_companies) DESC, country_code
+LIMIT 10;
+
+-- Задача №11: отобразить имя и фамилию всех сотрудников стартапов. 
+-- Добавить поле с названием учебного заведения, которое окончил сотрудник, если эта информация известна.
+
+SELECT first_name,
+       last_name,
+       instituition
+FROM people AS p
+LEFT JOIN education AS e ON p.id=e.person_id;
+
+-- Задача №12: для каждой компании найти количество учебных заведений, которые окончили её сотрудники. 
+-- Вывести название компании и число уникальных названий учебных заведений. Составить топ-5 компаний по количеству университетов.
+
+SELECT c.name,
+       COUNT(DISTINCT e.instituition)
+FROM company AS c
+LEFT JOIN people AS p ON c.id=p.company_id
+LEFT JOIN education AS e ON p.id=e.person_id
+GROUP BY c.id
+ORDER BY  COUNT(DISTINCT instituition) DESC
+LIMIT 5;
+
+-- Задача №13: составить список с уникальными названиями закрытых компаний, для которых первый раунд финансирования оказался последним.
+
+SELECT DISTINCT c.name
+FROM company AS c
+LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+WHERE status = 'closed'
+  AND is_first_round = 1
+  AND is_last_round = 1
+GROUP BY c.name;
+
+-- Задача №14: составить список уникальных номеров сотрудников, которые работают в компаниях, отобранных в предыдущем задании.
+
+SELECT p.id
+FROM people AS p
+WHERE p.company_id IN
+                    (SELECT c.id
+                    FROM company AS c
+                    LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+                    WHERE status = 'closed'
+                      AND is_first_round = 1
+                      AND is_last_round = 1
+                    GROUP BY c.id)
+GROUP BY p.id;
+
+-- Задача №15: составить таблицу, куда войдут уникальные пары с номерами сотрудников из предыдущей задачи и учебным заведением, которое окончил сотрудник.
+
+SELECT p.id,
+       e.instituition
+FROM people AS p LEFT JOIN education AS e ON p.id=e.person_id
+WHERE p.company_id IN
+                    (SELECT c.id
+                     FROM company AS c
+                     LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+                     WHERE status = 'closed'
+                     AND is_first_round = 1
+                     AND is_last_round = 1
+                     GROUP BY c.id)
+GROUP BY p.id, e.instituition
+HAVING instituition IS NOT NULL;
+
+-- Задача №16: посчитать количество учебных заведений для каждого сотрудника из предыдущего задания.
+
+SELECT p.id,
+       COUNT(e.instituition)
+FROM people AS p LEFT JOIN education AS e ON p.id=e.person_id
+WHERE p.company_id IN
+                    (SELECT c.id
+                     FROM company AS c
+                     LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+                     WHERE status = 'closed'
+                     AND is_first_round = 1
+                     AND is_last_round = 1
+                     GROUP BY c.id)
+GROUP BY p.id
+HAVING COUNT(DISTINCT e.instituition) > 0;
+
+-- Задача №17: вывести среднее число учебных заведений, которые окончили сотрудники разных компаний.
+
+WITH
+i AS (SELECT p.id,
+             COUNT(e.instituition)
+      FROM people AS p LEFT JOIN education AS e ON p.id=e.person_id
+      WHERE p.company_id IN
+                          (SELECT c.id
+                           FROM company AS c
+                           LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+                           WHERE status = 'closed'
+                           AND is_first_round = 1
+                           AND is_last_round = 1
+                           GROUP BY c.id)
+GROUP BY p.id
+HAVING COUNT(DISTINCT e.instituition) > 0)
+
+SELECT AVG(COUNT)
+FROM i;
+
+-- Задача №18: вывести среднее число учебных заведений, которые окончили сотрудники Facebook (сервис, запрещённый на территории РФ).
+
+WITH
+i AS (SELECT p.id,
+             COUNT(e.instituition)
+      FROM people AS p LEFT JOIN education AS e ON p.id=e.person_id
+      WHERE p.company_id IN
+                          (SELECT c.id
+                           FROM company AS c
+                           WHERE name = 'Facebook')
+GROUP BY p.id
+HAVING COUNT(DISTINCT e.instituition) > 0)
+
+SELECT AVG(COUNT)
+FROM i;
+
+-- Задача №19: составить таблицу из полей:
+  -- name_of_fund — название фонда;
+  -- name_of_company — название компании;
+  -- amount — сумма инвестиций, которую привлекла компания в раунде.
+-- В таблицу войдут данные о компаниях, в истории которых было больше шести важных этапов, а раунды финансирования проходили с 2012 по 2013 год включительно.
+
+SELECT f.name AS name_of_fund,
+       c.name AS name_of_company,
+       fr.raised_amount AS amount
+FROM investment AS i
+LEFT JOIN company AS c ON i.company_id=c.id
+LEFT JOIN fund AS f ON i.fund_id=f.id
+LEFT JOIN funding_round AS fr ON i.funding_round_id=fr.id
+WHERE c.milestones > 6
+  AND EXTRACT(YEAR FROM CAST(fr.funded_at AS date)) BETWEEN '2012' AND '2013';
+
+-- Задача №20: выгрузить таблицу, в которой будут такие поля:
+  -- название компании-покупателя;
+  -- сумма сделки;
+  -- название компании, которую купили;
+  -- сумма инвестиций, вложенных в купленную компанию;
+  -- доля, которая отображает, во сколько раз сумма покупки превысила сумму вложенных в компанию инвестиций, округлённая до ближайшего целого числа.
+-- Не учитывать те сделки, в которых сумма покупки равна нулю. Если сумма инвестиций в компанию равна нулю, исключить такую компанию из таблицы. 
+-- Отсортировать таблицу по сумме сделки от большей к меньшей, а затем по названию купленной компании в лексикографическом порядке. Ограничить таблицу первыми десятью записями.
+
+SELECT c.name AS acquiring_company,
+       t2.price_amount AS amount,
+       t2.acquired_company AS acquired_company,
+       t2.funding_total AS investment,
+       ROUND(t2.price_amount / t2.funding_total) AS prop
+
+FROM                 
+   (SELECT c.name AS acquired_company,
+           c.funding_total,
+           acquiring_company_id,
+           price_amount
+    FROM company AS c
+    RIGHT JOIN (
+                SELECT acquiring_company_id,
+                       acquired_company_id,
+                       price_amount
+                FROM acquisition AS a
+                    WHERE price_amount > 0) AS t1 ON c.id=t1.acquired_company_id
+    ) AS t2 LEFT JOIN company AS c ON c.id=t2.acquiring_company_id
+WHERE t2.funding_total > 0
+ORDER BY t2.price_amount DESC, t2.acquired_company
+LIMIT 10;
+
+-- Задача №21: выгрузить таблицу, в которую войдут названия компаний из категории social, получившие финансирование с 2010 по 2013 год включительно. 
+-- Проверить, что сумма инвестиций не равна нулю. Вывести также номер месяца, в котором проходил раунд финансирования.
+
+SELECT c.name AS social_company,
+       EXTRACT(MONTH FROM CAST(fr.funded_at AS date)) AS month
+FROM company AS c
+LEFT JOIN funding_round AS fr ON c.id=fr.company_id
+WHERE c.category_code = 'social'
+AND fr.funded_at BETWEEN '2010-01-01' AND '2013-12-31'
+AND fr.raised_amount <> 0;
+
+-- Задача №22: отобрать данные по месяцам с 2010 по 2013 год, когда проходили инвестиционные раунды. 
+-- Сгруппировать данные по номеру месяца и получите таблицу, в которой будут поля:
+  -- номер месяца, в котором проходили раунды;
+  -- количество уникальных названий фондов из США, которые инвестировали в этом месяце;
+  -- количество компаний, купленных за этот месяц;
+  -- общая сумма сделок по покупкам в этом месяце.
+
+WITH
+month AS (
+         SELECT EXTRACT(MONTH FROM CAST(fr.funded_at AS date)) AS month,
+         COUNT(DISTINCT f.id) AS funds
+FROM fund AS f
+LEFT JOIN investment AS i ON f.id=i.fund_id
+LEFT JOIN funding_round AS fr ON i.funding_round_id=fr.id
+WHERE f.country_code = 'USA'
+AND EXTRACT(YEAR FROM CAST(fr.funded_at AS date)) BETWEEN '2010' AND '2013'
+GROUP BY month),
+            
+acq AS (
+        SELECT EXTRACT(MONTH FROM CAST(a.acquired_at AS date)) AS month,
+        COUNT(a.acquired_company_id) AS acquired,
+        SUM(a.price_amount) AS total
+FROM acquisition AS a
+WHERE EXTRACT(YEAR FROM CAST(a.acquired_at AS date)) BETWEEN '2010' AND '2013'   
+GROUP BY month)            
+
+SELECT m.month,
+       m.funds,
+       a.acquired,
+       a.total
+FROM month AS m
+LEFT JOIN acq AS a ON m.month=a.month;
+
+-- Задача №23: составить сводную таблицу и выведите среднюю сумму инвестиций для стран, в которых есть стартапы, зарегистрированные в 2011, 2012 и 2013 годах. 
+-- Данные за каждый год должны быть в отдельном поле. 
+-- Отсортировать таблицу по среднему значению инвестиций за 2011 год от большего к меньшему.
+
+WITH
+year_2011 AS(
+             SELECT country_code AS country,
+             AVG(funding_total) AS sum_2011
+FROM company AS c
+GROUP BY country, EXTRACT(YEAR FROM c.founded_at)
+HAVING EXTRACT(YEAR FROM c.founded_at) = 2011),
+
+year_2012 AS(
+             SELECT country_code AS country,
+             AVG(funding_total) AS sum_2012
+FROM company AS c
+GROUP BY country, EXTRACT(YEAR FROM c.founded_at)
+HAVING EXTRACT(YEAR FROM c.founded_at) = 2012),
+
+year_2013 AS(
+             SELECT country_code AS country,
+             AVG(funding_total) AS sum_2013
+FROM company AS c
+GROUP BY country, EXTRACT(YEAR FROM c.founded_at)
+HAVING EXTRACT(YEAR FROM c.founded_at) = 2013)
+
+SELECT year_2011.country,
+       year_2011.sum_2011,
+       year_2012.sum_2012,
+       year_2013.sum_2013
+FROM year_2011
+JOIN year_2012 ON year_2011.country=year_2012.country
+JOIN year_2013 ON year_2012.country=year_2013.country
+ORDER BY year_2011.sum_2011 DESC;
