@@ -50,6 +50,7 @@
 Визуализация данных\
 Python\
 Pandas\
+Matplotlib\
 Seaborn\
 Plotly
 
